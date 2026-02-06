@@ -18,3 +18,7 @@ visualization:
   save_plots: true
   plot_avg_probs: true
   plot_heatmap: true
+
+inspection:
+  layers_to_inspect: [15]  # List of layers to inspect top-k tokens for
+  top_k: 5
