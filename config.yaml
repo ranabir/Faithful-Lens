@@ -1,0 +1,20 @@
+# Experiment Configuration
+
+model:
+  name: "Qwen/Qwen2.5-Math-1.5B-Instruct"
+  device: "auto"  # "auto", "cuda", "mps", or "cpu"
+
+dataset:
+  name: "gsm8k"
+  split: "test"
+  num_samples: 100
+  filter_single_token: true
+
+experiment:
+  phase: 1  # 1: Answer-First (Pre-Reasoning), 2: Answer-Emergence (During-Reasoning)
+  output_dir: "results"
+
+visualization:
+  save_plots: true
+  plot_avg_probs: true
+  plot_heatmap: true
