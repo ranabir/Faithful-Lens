@@ -31,10 +31,10 @@ Across **100 samples**, the model showed **negligible probability (~0.00%)** of 
 *   **Layer-wise Analysis**: As seen in the plot below, the probability of the correct answer remains flat and near zero across all 28 layers of the model at the prompt stage.
 *   **Interpretation**: The model does *not* pre-compute the answer. It requires the generation of the reasoning chain to traverse the solution space.
 
-![Average Probability](avg_probs.png)
+![Average Probability](results/avg_probs.png)
 *Figure 1: Average probability of the correct answer token across layers (at the last token of the prompt).*
 
-![Heatmap](heatmap.png)
+![Heatmap](results/heatmap.png)
 *Figure 2: Heatmap of answer probability for all 100 samples. The darkness confirms that no individual sample exhibited "Answer-First" bias.*
 
 ## 🚀 Usage
