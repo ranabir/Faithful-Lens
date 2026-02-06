@@ -1,67 +1,88 @@
 # Causal Tracing of "Answer-First" Bias in Math Reasoning
 
 ## 📌 Project Overview
-This project investigates faithfulness in Chain-of-Thought (CoT) reasoning models. Specifically, we test the **"Answer-First" Hypothesis**:
-> Does the model "decide" the final answer in its hidden states *before* it generates the reasoning steps?
+This project investigates the **faithfulness** of Chain-of-Thought (CoT) reasoning in Large Language Models. Specifically, we test the **"Answer-First" Hypothesis**:
+> *Does the model "know" or "decide" the final answer in its hidden states **before** it generates the reasoning steps?*
 
-If the answer (e.g., "42") is present in the residual stream at the end of the question (before reasoning starts), it suggests the reasoning chain is **post-hoc justification** (unfaithful). If the answer is absent, the reasoning is likely **necessary** (faithful).
+If the answer (e.g., "42") is present in the residual stream at the end of the question (before reasoning starts), it suggests the reasoning chain is **post-hoc justification** (unfaithful). If the answer is absent and only emerges *during* the reasoning process, the CoT is likely **necessary** for the computation (faithful).
 
 ## 🔬 Methodology: Logit Lens
-We use the **Logit Lens** technique to "x-ray" the model.
+We use the **Logit Lens** technique to "x-ray" the model's internal activations without training any probes.
+
 1.  **Input**: A math problem from GSM8K (e.g., "If John has 2 apples...").
-2.  **Probe Point**: The final token of the question input (Layer 0 to Layer L).
-3.  **Decoding**: At each layer, we project the hidden state $h_i$ to the vocabulary using the unwrapping matrix $W_U$:
+2.  **Probe Point**: The **final token of the question input** (Layer 0 to Layer $L$). This is the exact moment before the model generates the first token of its response.
+3.  **Decoding**: At each layer $i$, we take the hidden state $h_i$ and project it directly to the vocabulary using the model's own unembedding matrix $W_U$:
     $$P(token) = \text{softmax}(LayerNorm(h_i) \cdot W_U^T)$$
-4.  **Metric**: The probability assigned to the *ground truth answer* token.
+4.  **Metric**: We track the probability assigned specifically to the **ground truth answer** token.
 
-## 📊 Phase 1 Results: Pre-Reasoning Check
-**Model**: `Qwen/Qwen2.5-Math-1.5B-Instruct`
-**Dataset**: GSM8K (Test Split, n=50 single-token answer samples)
+## 🧪 Experiment Phase 1: Pre-Reasoning Check
+We ran a controlled experiment to see if the answer exists *before* reasoning.
 
-### Key Finding: **0.00% Early Emergence**
-The model does **not** know the answer before reasoning begins. Across 50 samples, the probability of the correct answer at the final layer of the prompt was negligible (~0.00%).
+*   **Model**: `Qwen/Qwen2.5-Math-1.5B-Instruct`
+*   **Dataset**: GSM8K (Test Split)
+*   **Sample Size**: 100 samples (filtered for single-token numerical answers).
+*   **Compute**: Local Inference (MPS/CUDA).
 
-### Visual Evidence
+### 📊 Results
+**Key Finding: 0% Early Emergence (High Faithfulness)**
 
-#### 1. Average Probability Across Layers
-The probability remains near zero across all layers. There is no "spike" indicating a pre-computed answer.
-![Average Probability](results/avg_probs.png)
+Across **100 samples**, the model showed **negligible probability (~0.00%)** of predicting the correct answer at the end of the question.
 
-#### 2. Sample-wise Heatmap
-Consistent darkness across all samples confirms no outliers where the model "guessed" early.
-![Heatmap](results/heatmap.png)
+*   **Layer-wise Analysis**: As seen in the plot below, the probability of the correct answer remains flat and near zero across all 28 layers of the model at the prompt stage.
+*   **Interpretation**: The model does *not* pre-compute the answer. It requires the generation of the reasoning chain to traverse the solution space.
+
+![Average Probability](avg_probs.png)
+*Figure 1: Average probability of the correct answer token across layers (at the last token of the prompt).*
+
+![Heatmap](heatmap.png)
+*Figure 2: Heatmap of answer probability for all 100 samples. The darkness confirms that no individual sample exhibited "Answer-First" bias.*
 
 ## 🚀 Usage
 
 ### 1. Installation
+Clone the repo and install dependencies:
 ```bash
+git clone https://github.com/ranabir/Faithful-Lens.git
+cd Faithful-Lens
 pip install -r requirements.txt
 ```
 
 ### 2. Configuration
-Edit `config.yaml` to change parameters:
+Edit `config.yaml` to adjust parameters (e.g., switch model, increase sample size):
 ```yaml
 model:
   name: "Qwen/Qwen2.5-Math-1.5B-Instruct"
 dataset:
-  num_samples: 50
+  num_samples: 100
 ```
 
 ### 3. Run Experiment
+Execute the analysis script:
 ```bash
 python -m src.run_experiment
 ```
+This will:
+1.  Load the model and dataset.
+2.  Run the Logit Lens analysis.
+3.  Save results to `results/analysis_results.json`.
 
 ### 4. Visualize Results
+Generate plots (saved to root directory):
 ```bash
 python src/visualize.py
 ```
 
-## 📁 Structure
-- `src/`: Core logic (LogitLens, DataLoader, Analysis).
-- `notebooks/`: Exploratory notebooks.
-- `results/`: output JSON data and generated plots.
-- `config.yaml`: Central experiment configuration.
-
 ## 🔜 Phase 2: Middle-of-Reasoning Trace
-The next phase will apply Logit Lens *during* the generation of the CoT to pinpoint the exact moment (layer & token position) the answer emerges.
+The next phase of this project involves **dynamic tracing**:
+*   Hooking into the generation loop.
+*   Applying Logit Lens at **every token step** of the generated Chain-of-Thought.
+*   **Goal**: Pinpoint the exact "Aha!" moment where the answer probability spikes (e.g., does it happen 5 tokens before the final number is generated?).
+
+## 📁 Repository Structure
+*   `src/`: Core implementation.
+    *   `logit_lens.py`: Minimal class for hooking and decoding residual streams.
+    *   `analysis.py`: Experiment logic.
+    *   `data_loader.py`: GSM8K processing and answer extraction.
+*   `notebooks/`: Prototype notebooks.
+*   `results/`: JSON data storage.
+*   `config.yaml`: Central configuration.
