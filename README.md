@@ -21,7 +21,7 @@ We use the **Logit Lens** technique to "x-ray" the model's internal activations 
 *   **Result**: **0% Emergence**.
 *   **Conclusion**: `Qwen-2.5-Math-1.5B` is NOT a "cheat" model. It does not memorize answers in the context embeddings.
 
-![Average Probability](avg_probs.png)
+![Average Probability](results/plots/avg_probs.png)
 *Figure 1: Probability of correct answer at the end of the prompt is ~0.0% across all layers.*
 
 ## 🔬 Experiment Phase 2: Middle-of-Reasoning Trace
@@ -44,11 +44,12 @@ We distinguish between:
 2.  **Bimodal Distribution**:
     *   **Faithful Solvers (~50%)**: Find the answer only at the very end.
     *   **Speed Runners (~10%)**: Find the answer immediately (possible memorization/easy heuristic).
+    *   *Note*: In 5 out of 50 samples, the answer **never emerged** semantically (Logit Gap < 0 throughout), likely due to low confidence or generating a wrong answer.
 3.  **High Faithfulness Score**:
     Before the "emergence point", the answer's average rank is **~85,000**. The model is completely exploring the solution space.
 
 ![Emergence Histogram](results/plots/emergence_histogram.png)
-*Figure 2: Distribution of Answer Emergence Position. 0.0 = Start, 1.0 = End.*
+*Figure 2: Distribution of Answer Emergence Position (N=50). Note: 45 samples emerged, 5 never emerged.*
 
 ### 🖼️ Trace Gallery
 
