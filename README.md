@@ -16,86 +16,62 @@ We use the **Logit Lens** technique to "x-ray" the model's internal activations 
 4.  **Metric**: We track the probability assigned specifically to the **ground truth answer** token.
 
 ## 🧪 Experiment Phase 1: Pre-Reasoning Check
-We ran a controlled experiment to see if the answer exists *before* reasoning.
-
-*   **Model**: `Qwen/Qwen2.5-Math-1.5B-Instruct`
-*   **Dataset**: GSM8K (Test Split)
-*   **Sample Size**: 100 samples (filtered for single-token numerical answers).
-*   **Compute**: Local Inference (MPS/CUDA).
-
-### 📊 Results & Interpretation
-**Key Finding: 0% Early Emergence (High Faithfulness)**
-
-Across **100 samples**, the model showed **negligible probability (~0.00%)** of predicting the correct answer at the end of the question.
-
-*   **Why is 0% probability expected/good?**
-    At the end of the question, the model is predicting the *next token*. For a faithful CoT model, the next token should be the start of reasoning (e.g., "Let's", "To", "First"), NOT the answer (e.g., "42").
-    *   **Faithful Model**: Predicts "Let's" (Prob near 1.0), Predicts "42" (Prob near 0.0).
-    *   **Unfaithful Model**: Might covertly predict "42" in a middle layer (Prob > 0.0) but then outputs "Let's" in the final layer.
-
-*   **Layer-wise Analysis**: As seen in the plot below, the probability of the correct answer remains flat and near zero across all 28 layers. This confirms the model does not "secretly know" the answer. It genuinely requires the reasoning chain to traverse the solution space.
+**Goal**: Does the model "know" the answer *before* it starts reasoning?
+*   **Method**: Probe the final token of the Question.
+*   **Result**: **0% Emergence**.
+*   **Conclusion**: `Qwen-2.5-Math-1.5B` is NOT a "cheat" model. It does not memorize answers in the context embeddings.
 
 ![Average Probability](avg_probs.png)
-*Figure 1: Average probability of the correct answer token across layers (at the last token of the prompt).*
+*Figure 1: Probability of correct answer at the end of the prompt is ~0.0% across all layers.*
 
-![Heatmap](heatmap.png)
-*Figure 2: Heatmap of answer probability for all 100 samples. The darkness confirms that no individual sample exhibited "Answer-First" bias.*
+## 🔬 Experiment Phase 2: Middle-of-Reasoning Trace
+**Goal**: When *exactly* does the answer emerge during the Chain-of-Thought?
 
-## 🚀 Usage
+### Methodology: The "Logit Gap"
+Instead of raw probability, we use **Logit Gap** to measure confidence:
+$$ \text{Gap} = \text{Logit}(\text{Answer}) - \text{Logit}(\text{Top-1 Token}) $$
+*   **Gap > 0 (Red)**: The model is effectively "shouting" the answer.
+*   **Gap < 0 (Blue)**: The answer is buried.
 
-### 1. Installation
-Clone the repo and install dependencies:
-```bash
-git clone https://github.com/ranabir/Faithful-Lens.git
-cd Faithful-Lens
-pip install -r requirements.txt
-```
+**Structural vs. Semantic Detection**:
+We distinguish between:
+1.  **Structural Numbers**: "Step **3**." (Orange in plots).
+2.  **Semantic Answers**: "The answer is **3**." (Red in plots).
 
-### 2. Configuration
-Edit `config.yaml` to adjust parameters (e.g., switch model, increase sample size):
-```yaml
-model:
-  name: "Qwen/Qwen2.5-Math-1.5B-Instruct"
-dataset:
-  num_samples: 100
-inspection:
-  layers_to_inspect: [15] # Inspect specific layers
-```
+### 📊 Key Findings (N=50 Samples)
+1.  **Median Emergence: 48%**
+    The answer typically "clicks" for the model halfway through the reasoning chain.
+2.  **Bimodal Distribution**:
+    *   **Faithful Solvers (~50%)**: Find the answer only at the very end.
+    *   **Speed Runners (~10%)**: Find the answer immediately (possible memorization/easy heuristic).
+3.  **High Faithfulness Score**:
+    Before the "emergence point", the answer's average rank is **~85,000**. The model is completely exploring the solution space.
 
-### 3. Run Experiment
-Execute the analysis script:
-```bash
-python -m src.run_experiment
-```
-This will:
-1.  Load the model and dataset.
-2.  Run the Logit Lens analysis.
-3.  Save results to `results/analysis_results.json`.
+![Emergence Histogram](results/plots/emergence_histogram.png)
+*Figure 2: Distribution of Answer Emergence Position. 0.0 = Start, 1.0 = End.*
 
-### 4. Visualize Results
-Generate plots (saved to root directory):
-```bash
-python src/visualize.py
-```
+### 🖼️ Trace Gallery
 
-### 5. Inspect Specific Layers
-To see what the model *is* predicting (since it's not the answer), run:
-```bash
-python -m src.inspect_layer
-```
+#### 1. The "Faithful" Trace (Standard)
+The answer emerges at **74%** of the generation, exactly when the calculation is performed.
+![Sample 1](results/plots/trace_sample_1_gap.png)
+*X-Axis: Tokens. Y-Axis: Layer Depth (0=Bottom, 27=Top). Red Line = Semantic Answer.*
 
-## 🔜 Phase 2: Middle-of-Reasoning Trace
-The next phase of this project involves **dynamic tracing**:
-*   Hooking into the generation loop.
-*   Applying Logit Lens at **every token step** of the generated Chain-of-Thought.
-*   **Goal**: Pinpoint the exact "Aha!" moment where the answer probability spikes (e.g., does it happen 5 tokens before the final number is generated?).
+#### 2. The "Early" Trace (Speed Runner)
+The answer emerges at **3%** (right at the start).
+![Sample 17](results/plots/trace_sample_17_gap.png)
 
 ## 📁 Repository Structure
 *   `src/`: Core implementation.
-    *   `logit_lens.py`: Minimal class for hooking and decoding residual streams.
-    *   `analysis.py`: Experiment logic.
-    *   `inspect_layer.py`: Tool to inspect top-k predictions at specific layers.
-    *   `data_loader.py`: GSM8K processing and answer extraction.
-*   `notebooks/`: Prototype notebooks.
-*   `results/`: JSON data storage.
-*   `config.yaml`: Central configuration.
+    *   `logit_lens.py`: Hooking mechanism.
+    *   `visualize_trace.py`: Generates the Heatmaps.
+    *   `analysis.py`: Main experiment logic.
+*   `results/`:
+    *   `analysis_results_phase2.json`: Raw data.
+    *   `plots/`: All 50 trace visualizations.
+*   `config.yaml`: Experiment configuration.
+
+## 🚀 Usage
+1.  **Install**: `pip install -r requirements.txt`
+2.  **Run Experiment**: `python -m src.run_experiment`
+3.  **Visualize**: `python src/visualize_trace.py`

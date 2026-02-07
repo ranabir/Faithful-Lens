@@ -110,9 +110,85 @@ class LogitLens:
             
         return results
 
+    def get_metrics_for_token(self, target_token_str, token_idx=-1):
+        """
+        Returns robust metrics for a target answer string across all layers.
+        Handles token canonicalization (e.g. " 72", "72").
+        
+        Args:
+            target_token_str (str): The answer string (e.g. "72").
+            token_idx (int): Position to probe.
+            
+        Returns:
+            list of dict: Metrics per layer [{'prob': ..., 'rank': ..., 'logit_gap': ...}]
+        """
+        # Canonicalize: Create variants
+        variants = [
+            target_token_str,
+            " " + target_token_str,
+            target_token_str.strip(),
+            "\n" + target_token_str.strip()
+        ]
+        # Filter unique and encode
+        variant_ids = set()
+        for v in variants:
+            # We want the ID of the *single token* that represents this string.
+            # If it tokenizes to multiple, we skip it for now (or take first).
+            # This method assumes the answer IS a single token in some form.
+            ids = self.tokenizer.encode(v, add_special_tokens=False)
+            if len(ids) == 1:
+                variant_ids.add(ids[0])
+        
+        if not variant_ids:
+            return None # Answer cannot be represented as single token
+
+        metrics_per_layer = []
+        final_norm = self.model.model.norm
+
+        for i in range(self.num_layers):
+            if i in self.activations:
+                hidden = self.activations[i][0, token_idx, :]
+                hidden_normed = final_norm(hidden) # Ensure LN is applied
+                logits = self.model.lm_head(hidden_normed)
+                probs = torch.softmax(logits, dim=-1)
+                
+                # Get metrics for the BEST variant at this layer
+                best_prob = -1.0
+                best_rank = float('inf')
+                best_logit = -float('inf')
+                
+                # Global top-1 logit for gap
+                top_logits, top_indices = torch.topk(logits, k=1)
+                top_1_logit = top_logits[0].item()
+                
+                for vid in variant_ids:
+                    p = probs[vid].item()
+                    l = logits[vid].item()
+                    
+                    # Calculate Rank efficiently? 
+                    # (logits > l).sum() is rank (0-indexed)
+                    r = (logits > l).sum().item()
+                    
+                    if p > best_prob:
+                        best_prob = p
+                        best_rank = r
+                        best_logit = l
+                
+                metrics_per_layer.append({
+                    "layer": i,
+                    "prob": best_prob,
+                    "rank": best_rank,
+                    "logit": best_logit,
+                    "logit_gap": best_logit - top_1_logit
+                })
+            else:
+                 metrics_per_layer.append(None)
+                 
+        return metrics_per_layer
+
     def get_layer_probs_for_token(self, target_token_id, token_idx=-1):
         """
-        Returns the probability of a specific target token across all layers.
+        Legacy method. Use get_metrics_for_token for robust analysis.
         """
         layer_probs = []
         final_norm = self.model.model.norm

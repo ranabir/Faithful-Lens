@@ -7,11 +7,11 @@ model:
 dataset:
   name: "gsm8k"
   split: "test"
-  num_samples: 100
+  num_samples: 50
   filter_single_token: true
 
 experiment:
-  phase: 1  # 1: Answer-First (Pre-Reasoning), 2: Answer-Emergence (During-Reasoning)
+  phase: 2  # 1: Answer-First (Pre-Reasoning), 2: Answer-Emergence (During-Reasoning)
   output_dir: "results"
 
 visualization:

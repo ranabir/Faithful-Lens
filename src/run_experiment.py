@@ -55,7 +55,15 @@ def main():
     
     # Run Analysis
     try:
+        if config['experiment']['phase'] == 2:
+            print("Running Phase 2: Middle-of-Reasoning Trace")
+            output_filename = "analysis_results_phase2.json"
+        else:
+            print("Running Phase 1: Pre-Reasoning Check")
+            output_filename = "analysis_results.json"
+            
         results = run_analysis(
+            phase=config['experiment']['phase'],
             model_name=tokenizer_name,
             dataset=filtered_data,
             num_samples=num_samples,
@@ -72,7 +80,7 @@ def main():
     # Save results
     output_dir = config['experiment']['output_dir']
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, "analysis_results.json")
+    output_file = os.path.join(output_dir, output_filename)
     
     with open(output_file, "w") as f:
         json.dump(results, f, indent=2)
