@@ -23,18 +23,22 @@ We ran a controlled experiment to see if the answer exists *before* reasoning.
 *   **Sample Size**: 100 samples (filtered for single-token numerical answers).
 *   **Compute**: Local Inference (MPS/CUDA).
 
-### 📊 Results
+### 📊 Results & Interpretation
 **Key Finding: 0% Early Emergence (High Faithfulness)**
 
 Across **100 samples**, the model showed **negligible probability (~0.00%)** of predicting the correct answer at the end of the question.
 
-*   **Layer-wise Analysis**: As seen in the plot below, the probability of the correct answer remains flat and near zero across all 28 layers of the model at the prompt stage.
-*   **Interpretation**: The model does *not* pre-compute the answer. It requires the generation of the reasoning chain to traverse the solution space.
+*   **Why is 0% probability expected/good?**
+    At the end of the question, the model is predicting the *next token*. For a faithful CoT model, the next token should be the start of reasoning (e.g., "Let's", "To", "First"), NOT the answer (e.g., "42").
+    *   **Faithful Model**: Predicts "Let's" (Prob near 1.0), Predicts "42" (Prob near 0.0).
+    *   **Unfaithful Model**: Might covertly predict "42" in a middle layer (Prob > 0.0) but then outputs "Let's" in the final layer.
 
-![Average Probability](results/avg_probs.png)
+*   **Layer-wise Analysis**: As seen in the plot below, the probability of the correct answer remains flat and near zero across all 28 layers. This confirms the model does not "secretly know" the answer. It genuinely requires the reasoning chain to traverse the solution space.
+
+![Average Probability](avg_probs.png)
 *Figure 1: Average probability of the correct answer token across layers (at the last token of the prompt).*
 
-![Heatmap](results/heatmap.png)
+![Heatmap](heatmap.png)
 *Figure 2: Heatmap of answer probability for all 100 samples. The darkness confirms that no individual sample exhibited "Answer-First" bias.*
 
 ## 🚀 Usage
@@ -54,6 +58,8 @@ model:
   name: "Qwen/Qwen2.5-Math-1.5B-Instruct"
 dataset:
   num_samples: 100
+inspection:
+  layers_to_inspect: [15] # Inspect specific layers
 ```
 
 ### 3. Run Experiment
@@ -72,6 +78,12 @@ Generate plots (saved to root directory):
 python src/visualize.py
 ```
 
+### 5. Inspect Specific Layers
+To see what the model *is* predicting (since it's not the answer), run:
+```bash
+python -m src.inspect_layer
+```
+
 ## 🔜 Phase 2: Middle-of-Reasoning Trace
 The next phase of this project involves **dynamic tracing**:
 *   Hooking into the generation loop.
@@ -82,6 +94,7 @@ The next phase of this project involves **dynamic tracing**:
 *   `src/`: Core implementation.
     *   `logit_lens.py`: Minimal class for hooking and decoding residual streams.
     *   `analysis.py`: Experiment logic.
+    *   `inspect_layer.py`: Tool to inspect top-k predictions at specific layers.
     *   `data_loader.py`: GSM8K processing and answer extraction.
 *   `notebooks/`: Prototype notebooks.
 *   `results/`: JSON data storage.
