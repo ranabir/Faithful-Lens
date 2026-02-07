@@ -2,6 +2,7 @@
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 def compute_aggregate_stats(input_file="results/analysis_results_phase2.json"):
     try:
@@ -87,7 +88,11 @@ def compute_aggregate_stats(input_file="results/analysis_results_phase2.json"):
         # Plot Histogram
         plt.figure(figsize=(10, 6))
         plt.hist(emergence_positions, bins=10, range=(0, 1), edgecolor='black')
-        plt.title(f"Histogram of Answer Emergence Position (N={len(emergence_positions)})")
+        
+        total_samples = len(samples)
+        never_emerged_count = total_samples - len(emergence_positions)
+        
+        plt.title(f"Histogram of Answer Emergence Position (N={total_samples})\n({len(emergence_positions)} Emerged, {never_emerged_count} Never Emerged)")
         plt.xlabel("Relative Position in Reasoning Chain (0.0=Start, 1.0=End)")
         plt.ylabel("Count")
         plt.axvline(avg_pos, color='red', linestyle='dashed', linewidth=2, label=f'Mean: {avg_pos:.2f}')
