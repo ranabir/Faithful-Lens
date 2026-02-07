@@ -38,6 +38,18 @@ We distinguish between:
 1.  **Structural Numbers**: "Step **3**." (Orange in plots).
 2.  **Semantic Answers**: "The answer is **3**." (Red in plots).
 
+### 🛠️ Handling Tokenization Quirks
+A major challenge in Logit Lens is that the answer "3" can appear in many forms in the vocabulary:
+*   `"3"` (plain)
+*   `" 3"` (with space)
+*   `"3."` (with period)
+*   `"3)"` (with parenthesis)
+
+If we only tracked `" 3"`, we'd miss times where the model predicts `"3."`.
+**Our Solution**:
+*   **Canonicalization**: We project the hidden state to *all* variants of the answer token in the vocabulary.
+*   **Max-Prob Strategy**: We take the maximum probability/logit across all these variants to represent the model's confidence in the abstract concept of "3".
+
 ### 📊 Key Findings (N=50 Samples)
 1.  **Median Emergence: 48%**
     The answer typically "clicks" for the model halfway through the reasoning chain.
