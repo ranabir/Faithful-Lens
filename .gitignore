@@ -53,3 +53,4 @@ results/analysis_results.json
 .ipynb_checkpoints
 profile_default/
 ipython_config.py
+arxiv/
