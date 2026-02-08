@@ -88,3 +88,14 @@ The answer emerges at **3%** (right at the start).
 1.  **Install**: `pip install -r requirements.txt`
 2.  **Run Experiment**: `python -m src.run_experiment`
 3.  **Visualize**: `python src/visualize_trace.py`
+
+## 🔬 Advanced Causal Experiments
+To reproduce the paper's findings:
+1. **Causal Heatmap (N=10)**:
+   ```bash
+   python -m src.causal.gsm8k_scaling
+   ```
+2. **Control Experiments (N=50)**:
+   ```bash
+   python src/causal/control_experiments.py
+   ```

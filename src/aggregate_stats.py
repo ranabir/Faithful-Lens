@@ -1,8 +1,20 @@
 
 import json
 import numpy as np
-import matplotlib.pyplot as plt
 import os
+# from scipy import stats # Module missing, implementing manual bootstrap
+
+def manual_bootstrap_ci(data, n_resamples=1000, alpha=0.95):
+    """Compute bootstrap CI manually without scipy."""
+    means = []
+    n = len(data)
+    for _ in range(n_resamples):
+        sample = np.random.choice(data, n, replace=True)
+        means.append(np.mean(sample)) # Or median if skewed
+    
+    lower = np.percentile(means, (1 - alpha) / 2 * 100)
+    upper = np.percentile(means, (1 + alpha) / 2 * 100)
+    return lower, upper
 
 def compute_aggregate_stats(input_file="results/analysis_results_phase2.json"):
     try:
@@ -16,90 +28,129 @@ def compute_aggregate_stats(input_file="results/analysis_results_phase2.json"):
     print(f"Analyzing {len(samples)} samples...")
     
     emergence_positions = [] # Relative position (0.0 to 1.0)
-    answer_ranks = []
+    emergence_layers = []   # Layer index (0-28) at emergence
+    correct_count = 0
+    
+    failures = [] # List of (index, reason, trace_snippet)
     
     for i, sample in enumerate(samples):
         trace = sample["trace"]
         target = sample["target_answer"]
         total_steps = len(trace)
         
-        # Find first "Semantic Emergence"
-        # Logic: Gap > -0.1 AND not structural (heuristic: next token not . or ))
-        
+        full_text = "".join([t["generated_token"] for t in trace])
+        is_correct = target in full_text[-20:]
+        if is_correct:
+            correct_count += 1
+        else:
+            failures.append({
+                "id": i,
+                "reason": "Incorrect Answer",
+                "text": full_text[-50:],
+                "target": target
+            })
+            continue # Skip incorrect for emergence stats? Or keep? 
+                     # Usually keep but mark as "Never Emerged" if it didn't.
+                     
+        # Find Emergence
         emergence_idx = -1
+        found_layer = -1
         
         for idx, step in enumerate(trace):
-            token = step["generated_token"]
+            # We look for ANY layer where the target is Top-1 (Gap > 0)
+            # But we must avoid structural mentions (e.g. "Step 3") which might actually BE the token.
+            # If the current token IS the target, and Gap > 0, it's valid, but might be structural.
+            # If the current token is NOT the target (e.g. "The"), and Gap > 0 (in Layer 15), it implies latent knowledge.
             
-            # Check if token contains answer
-            if target in token or token.strip() == target:
-                final_gap = step["layer_metrics"][-1]["logit_gap"]
+            # 1. Get max gap across layers
+            best_layer_gap = -999
+            best_layer = -1
+            
+            for lm in step["layer_metrics"]:
+                if lm and lm["logit_gap"] > best_layer_gap:
+                    best_layer_gap = lm["logit_gap"]
+                    best_layer = lm["layer"]
+            
+            # Threshold: Gap > -0.1 means it is the Top-1 prediction (or very close)
+            # Since Gap = Logit(Target) - Logit(Top1), Gap=0 means Target IS Top1.
+            if best_layer_gap > -0.01:
+                # 2. Structural/False Positive Filter
                 
-                # Check structure
+                # Check A: Is this just the model reading the previous token? 
+                # (Not applicable for generation, only prompt processing)
+                
+                # Check B: Is this an intermediate calculation?
+                # Heuristic: Check the *next generated token*.
+                # If the current hidden state predicts "3", and the next token IS "3",
+                # check if that "3" is followed by an operator.
+                
                 is_structural = False
                 if idx + 1 < len(trace):
                     next_token = trace[idx+1]["generated_token"].strip()
-                    if next_token.startswith('.') or next_token.startswith(')'):
-                        is_structural = True
+                    # If the prediction matches the next token, we check context
+                    if next_token == target: 
+                        # Check the token AFTER that
+                        if idx + 2 < len(trace):
+                            after_next = trace[idx+2]["generated_token"].strip()
+                            # Operators, OR unit words like "dollars"? 
+                            # If "3 dollars", it might be the answer.
+                            # Standard CoT: "So 1+2=3." -> 3 is followed by "."
+                            # Answer format: "Answer: 3" -> 3 is followed by <EOS> or similar.
+                            
+                            # If followed by operator, it is structure.
+                            if after_next in ['+', '-', '*', '/', '=', 'times', 'plus', 'minus', '^']:
+                                is_structural = True
                 
-                if final_gap > -0.1 and not is_structural:
+                # Also, we check if the answer emerges VERY early (e.g. step 0).
+                # If step 0 gap > -0.01, it might be "Pre-computation" / Leakage.
+                # But we treat that as Valid Emergence (Position 0.0).
+                
+                if not is_structural:
                     emergence_idx = idx
-                    break # Found the first semantic answer
+                    found_layer = best_layer
+                    break # Found earliest emergence
         
         if emergence_idx != -1:
             emergence_positions.append(emergence_idx / total_steps)
-            print(f"Sample {i+1}: Answer emerged at {emergence_idx}/{total_steps} ({emergence_idx/total_steps:.1%})")
-            
-            # Calculate Faithfulness: Avg Rank of answer BEFORE emergence
-            # Ideally this should be high (>> 100)
-            pre_emergence_ranks = []
-            for step in trace[:emergence_idx]:
-                 # Filter out structural mentions (Orange)
-                 # If step has high confidence structural answer, we should skip it or treat it as neutral
-                 # But our logic says if it's structural, it's NOT the semantic answer.
-                 # So rank might be low (0) but it's structure.
-                 # We simply take the rank.
-                 pre_emergence_ranks.append(step["layer_metrics"][-1]["rank"])
-            
-            if pre_emergence_ranks:
-                avg_rank = np.mean(pre_emergence_ranks)
-                print(f"  Faithfulness Score (Avg Rank before emergence): {avg_rank:.1f} (Higher is Better)")
-            
-            # Find Emergence Layer at the emergence step
-            emergence_step_data = trace[emergence_idx]
-            emergence_layer = -1
-            for layer_metric in emergence_step_data["layer_metrics"]:
-                if layer_metric["logit_gap"] > -0.1:
-                    emergence_layer = layer_metric["layer"]
-                    break
-            
-            if emergence_layer != -1:
-                print(f"  Emergence Layer: {emergence_layer} (0-27)")
+            emergence_layers.append(found_layer)
         else:
-            print(f"Sample {i+1}: Answer never emerged semantically.")
-            
+            reason = "Never Emerged"
+            if not is_correct: reason = "Incorrect & Never Emerged"
+            failures.append({
+                "id": i,
+                "reason": reason,
+                "text": full_text[-50:],
+                "target": target
+            })
+
+    # --- Stats Output ---
+    print("\n=== Aggregate Statistics ===")
+    acc = correct_count / len(samples)
+    print(f"Accuracy: {acc:.1%} ({correct_count}/{len(samples)})")
+    
     if emergence_positions:
         avg_pos = np.mean(emergence_positions)
-        median_pos = np.median(emergence_positions)
-        print("-" * 30)
-        print(f"Average Emergence Position: {avg_pos:.1%} of reasoning chain")
-        print(f"Median Emergence Position:  {median_pos:.1%} of reasoning chain")
+        std_pos = np.std(emergence_positions)
+        ci_low, ci_high = manual_bootstrap_ci(emergence_positions)
         
-        # Plot Histogram
-        plt.figure(figsize=(10, 6))
-        plt.hist(emergence_positions, bins=10, range=(0, 1), edgecolor='black')
+        print(f"\nEmergence Position (Relative):")
+        print(f"  Mean: {avg_pos:.1%} ± {std_pos:.1%}")
+        print(f"  95% CI: [{ci_low:.1%}, {ci_high:.1%}]")
         
-        total_samples = len(samples)
-        never_emerged_count = total_samples - len(emergence_positions)
+        avg_layer = np.mean(emergence_layers)
+        std_layer = np.std(emergence_layers)
+        ci_layer_low, ci_layer_high = manual_bootstrap_ci(emergence_layers)
         
-        plt.title(f"Histogram of Answer Emergence Position (N={total_samples})\n({len(emergence_positions)} Emerged, {never_emerged_count} Never Emerged)")
-        plt.xlabel("Relative Position in Reasoning Chain (0.0=Start, 1.0=End)")
-        plt.ylabel("Count")
-        plt.axvline(avg_pos, color='red', linestyle='dashed', linewidth=2, label=f'Mean: {avg_pos:.2f}')
-        plt.legend()
-        os.makedirs("results/plots", exist_ok=True)
-        plt.savefig("results/plots/emergence_histogram.png")
-        print("Saved results/plots/emergence_histogram.png")
+        print(f"\nEmergence Layer (0-28):")
+        print(f"  Mean: {avg_layer:.1f} ± {std_layer:.1f}")
+        print(f"  95% CI: [{ci_layer_low:.1f}, {ci_layer_high:.1f}]")
+        
+    print("\n=== Top Failures (Sample) ===")
+    print("| ID | Reason | Target | Snippet |")
+    print("|---|---|---|---|")
+    for f in failures[:10]:
+        snippet = f['text'].replace('\n', ' ')
+        print(f"| {f['id']} | {f['reason']} | {f['target']} | ...{snippet} |")
 
 if __name__ == "__main__":
     compute_aggregate_stats()

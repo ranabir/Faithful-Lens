@@ -1,3 +1,14 @@
+"""
+Script to run dense Causal Tracing on GSM8K samples.
+Generates a heatmap showing the causal effect of restoration at different layers/tokens.
+
+Usage:
+    python -m src.causal.gsm8k_scaling
+
+Settings:
+    n_samples: Number of samples to trace (Resulting heatmap is averaged).
+    Model: Qwen/Qwen2.5-Math-1.5B-Instruct
+"""
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,7 +19,7 @@ import os
 
 # Import existing tracer
 # Assumes running from root as `python -m src.causal.gsm8k_scaling`
-from .trace_experiment import CausalTracer, model, tokenizer, DEVICE
+from src.causal.trace_experiment import CausalTracer, model, tokenizer, DEVICE
 
 # Load GSM8K Data
 from datasets import load_dataset
@@ -94,11 +105,11 @@ def run_gsm8k_causal_sweep(n_samples=5):
         generated_text = tokenizer.decode(generated_ids)
         print(f"Full Generated: '{generated_text}'")
         
-        # Find first token that isn't whitespace
+        # Find first token that has a numeric digit
         target_token_id = None
         for tid in generated_ids:
             t_str = tokenizer.decode([tid])
-            if t_str.strip(): # Is not empty/whitespace
+            if re.search(r"\d", t_str): # Contains digit
                 target_token_id = tid.item()
                 target_token_str = t_str
                 break
@@ -157,4 +168,4 @@ def run_gsm8k_causal_sweep(n_samples=5):
     print("Saved aggregate heatmap to results/causal/gsm8k_average.png")
 
 if __name__ == "__main__":
-    run_gsm8k_causal_sweep(n_samples=5)
+    run_gsm8k_causal_sweep(n_samples=10)
