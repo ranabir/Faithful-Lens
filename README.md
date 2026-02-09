@@ -90,12 +90,27 @@ The answer emerges at **3%** (right at the start).
 3.  **Visualize**: `python src/visualize_trace.py`
 
 ## 🔬 Advanced Causal Experiments
-To reproduce the paper's findings:
-1. **Causal Heatmap (N=10)**:
-   ```bash
-   python -m src.causal.gsm8k_scaling
-   ```
-2. **Control Experiments (N=50)**:
-   ```bash
-   python src/causal/control_experiments.py
-   ```
+
+### 1. Causal Tracing: Finding the "Computation Hub"
+We use **Activation Patching** (Denoising) to potentialize where the reasoning happens. We corrupt the question (e.g. change numbers) and patch back "Clean" activations to see which restore the correct answer.
+
+*   **Script**: `src/causal/gsm8k_scaling.py`
+*   **Command**: `python -m src.causal.gsm8k_scaling`
+*   **Output**: `results/causal/gsm8k_average.png`
+
+![Causal Heatmap](results/causal/gsm8k_average.png)
+*Figure 3: Aggregate Causal Trace (N=10). The bright spot in Layers 9-18 at the end of the prompt indicates a "Computation Hub".*
+
+### 2. Control Experiments: Verifying Necessity
+To ensure the "Hub" is not just a correlation, we run rigorous controls ($N=50$):
+*   **Random Noise**: Patching unrelated content destroys performance (Hub is necessary).
+*   **Irrelevant Token**: Patching non-hub tokens has zero effect (Spatial precision).
+*   **Hub Restoration**: Patching *only* the Hub restores some, but not all, performance (Distributed representation).
+
+*   **Script**: `src/causal/control_experiments.py`
+*   **Command**: `python src/causal/control_experiments.py`
+*   **Output**: `results/causal/control_aggregate_n50.png`
+
+![Control Results](results/causal/control_aggregate_n50.png)
+*Figure 4: Control Experiments confirm the mechanism is robust and specific.*
+
